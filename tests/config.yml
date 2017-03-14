@@ -2,13 +2,7 @@
 #region: us-east-1
 
 _instance_tags_to_propagate:
-  - 'Company'
   - 'Name'
-  - 'Owner'
-  - 'Product'
-  - 'Environment'
-  - 'Type'
-  - 'Tenant'
 
 _volume_tags_to_propagate:
   - 'Name'
