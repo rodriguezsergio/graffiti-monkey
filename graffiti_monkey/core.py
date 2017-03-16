@@ -169,16 +169,17 @@ class GraffitiMonkey(object):
                          for r in p['Reservations']
                          for i in r['Instances']}
 
-            volume_params = {
-                'Filters': [
-                    {
-                        'Name': 'attachment.instance-id',
-                        'Values': instances.keys()
-                    }
-                ]
-            }
-            paginator = self._conn.get_paginator('describe_volumes')
-            volumes = sum([x['Volumes'] for x in paginator.paginate(**volume_params)], [])
+            instance_keys = instances.keys()
+            for chunk in (instance_keys[n:n+200] for n in xrange(0, len(instance_keys), 200)):
+                volume_params = {
+                    'Filters': [
+                        {
+                            'Name': 'attachment.instance-id',
+                            'Values': chunk
+                        }
+                    ]
+                }
+                volumes.extend(self._conn.describe_volumes(**volume_params)['Volumes'])
 
         else:
             log.info('Getting list of all volumes')
@@ -238,8 +239,10 @@ class GraffitiMonkey(object):
             instance_id = volume["Attachments"][0].get("InstanceId", "Unknown")
             device = volume["Attachments"][0].get("Device", "Unknown")
 
+        volume_tags = dict([(x['Key'], x['Value']) for x in volume.get('Tags', [])])
+
         if self._append:
-            tags_to_set = dict([(x['Key'], x['Value']) for x in volume.get('Tags', [])])
+            tags_to_set = volume_tags.copy()
         else:
             tags_to_set = {}
 
@@ -256,12 +259,11 @@ class GraffitiMonkey(object):
         log.debug('Trying to set default tags: %s', self._volume_tags_to_be_set)
         tags_to_set.update(self._volume_tags_to_be_set)
 
-        tags_to_set = [{'Key': k, 'Value': v} for (k, v) in tags_to_set.iteritems()]
-
-        if self._dryrun:
-            log.info('DRYRUN: Volume %s would have been tagged %s', volume["VolumeId"], tags_to_set)
+        if volume_tags != tags_to_set:
+            self._set_resource_tags(volume, 'VolumeId', tags_to_set)
         else:
-            self._set_resource_tags(volume, "VolumeId", tags_to_set)
+            log.info('Volume "%s" already has the desired tags.', volume['VolumeId'])
+
         return True
 
 
@@ -350,29 +352,22 @@ class GraffitiMonkey(object):
         tags_to_set.update(self._snapshot_tags_to_be_set)
 
         if tags_to_set != snapshot_tags:
-            # Convert from dict to boto3 Key/Value list
-            tags_to_set = [{'Key': k, 'Value': v} for (k, v) in tags_to_set.items()]
-
-            if self._dryrun:
-                log.info('DRYRUN: Snapshot %s would have been tagged %s', snapshot["SnapshotId"], tags_to_set)
-            else:
-                self._set_resource_tags(snapshot, "SnapshotId", tags_to_set)
+            self._set_resource_tags(snapshot, "SnapshotId", tags_to_set)
+        else:
+            log.info('Snapshot "%s" already has the desired tags.', snapshot['SnapshotId'])
 
 
     def _set_resource_tags(self, resource, resource_id, tags):
         ''' Sets the tags on the given AWS resource '''
 
-        resource_tags = dict([(x['Key'], x['Value']) for x in resource.get('Tags', [])])
-        new_tags = resource_tags.copy()
-        new_tags.update(dict([(x['Key'], x['Value']) for x in tags]))
-
-        if new_tags != resource_tags:
-            # Convert from dict to boto3 Key/Value list
-            new_tags = [{'Key': k, 'Value': v} for (k, v) in new_tags.items()]
-            log.info('Tagging %s with [%s]', resource[resource_id], new_tags)
-
-            self._conn.create_tags(Resources=[resource[resource_id]], Tags=new_tags)
-            resource['Tags'] = new_tags
+        # Convert from dict to boto3 Key/Value list
+        tags = [{'Key': k, 'Value': v} for (k, v) in tags.items()]
+        if self._dryrun:
+            log.info('DRYRUN: %s would have been tagged %s', resource[resource_id], tags)
+        else:
+            log.info('Tagging %s with [%s]', resource[resource_id], tags)
+            self._conn.create_tags(Resources=[resource[resource_id]], Tags=tags)
+            resource['Tags'] = tags
 
 
 class Logging(object):
