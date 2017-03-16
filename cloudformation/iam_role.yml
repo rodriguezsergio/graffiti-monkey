@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  LambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+      Path: "/"
+      RoleName: "GraffitiMonkeyRole"
+  RolePolicies:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "EC2Tagging"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Action: "ec2:CreateTags"
+            Resource: "*"
+      Roles: 
+        - 
+          Ref: "LambdaRole"
