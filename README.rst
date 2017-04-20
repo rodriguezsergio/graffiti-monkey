@@ -1,14 +1,6 @@
 Graffiti Monkey
 ===============
 
-.. image:: https://badges.gitter.im/Join%20Chat.svg
-   :alt: Join the chat at https://gitter.im/Answers4AWS/graffiti-monkey
-   :target: https://gitter.im/Answers4AWS/graffiti-monkey?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
-
-.. image:: https://travis-ci.org/Answers4AWS/graffiti-monkey.png?branch=master
-   :target: https://travis-ci.org/Answers4AWS/graffiti-monkey
-   :alt: Build Status
-
 The Graffiti Monkey goes around tagging things. By looking at the tags an EC2
 instance has, it copies those tags to the EBS Volumes that are attached to it,
 and then copies those tags to the EBS Snapshots.
