@@ -115,6 +115,8 @@ class GraffitiMonkey(object):
                               }
                            ]
                         }
+                        if 'Tags' in image:
+                            amis[mapping['Ebs']['SnapshotId']]['Tags'].extend(image['Tags'])
 
             log.info("Compiled AMI information for tagging.")
 
