@@ -44,6 +44,7 @@ class GraffitiMonkeyCli(object):
         self.volumes = None
         self.snapshots = None
         self.instancefilter = None
+        self.noamis = False
         self.novolumes = False
         self.nosnapshots = False
 
@@ -79,6 +80,8 @@ class GraffitiMonkeyCli(object):
                             help='volume-ids to tag')
         parser.add_argument('--snapshots', action='append',
                             help='snapshot-ids to tag'),
+        parser.add_argument('--noamis', action='store_true',
+                            help='do not propagate AMI data to snapshots')
         parser.add_argument('--novolumes', action='store_true',
                             help='do not perform volume tagging')
         parser.add_argument('--nosnapshots', action='store_true',
@@ -158,6 +161,9 @@ class GraffitiMonkeyCli(object):
         if "_instance_filter" in self.config.keys():
             self.instancefilter = self.config["_instance_filter"]
 
+    def set_noamis(self):
+        self.noamis = self.args.noamis
+
     def set_novolumes(self):
         self.novolumes = self.args.novolumes
 
@@ -181,6 +187,7 @@ class GraffitiMonkeyCli(object):
                                      self.volumes,
                                      self.snapshots,
                                      self.instancefilter,
+                                     self.noamis,
                                      self.novolumes,
                                      self.nosnapshots
                                      )
@@ -206,6 +213,7 @@ class GraffitiMonkeyCli(object):
         self.set_volumes()
         self.set_snapshots()
         self.set_instancefilter()
+        self.set_noamis()
         self.set_novolumes()
         self.set_nosnapshots()
 

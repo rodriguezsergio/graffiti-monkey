@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 
 class GraffitiMonkey(object):
-    def __init__(self, region, profile, instance_tags_to_propagate, volume_tags_to_propagate, volume_tags_to_be_set, snapshot_tags_to_be_set, dryrun, append, volumes_to_tag, snapshots_to_tag, instance_filter, novolumes, nosnapshots):
+    def __init__(self, region, profile, instance_tags_to_propagate, volume_tags_to_propagate, volume_tags_to_be_set, snapshot_tags_to_be_set, dryrun, append, volumes_to_tag, snapshots_to_tag, instance_filter, noamis, novolumes, nosnapshots):
         # This list of tags associated with an EC2 instance to propagate to
         # attached EBS volumes
         self._instance_tags_to_propagate = instance_tags_to_propagate
@@ -62,6 +62,9 @@ class GraffitiMonkey(object):
         # Filter instances by a given param and propagate their tags to their attached volumes
         self._instance_filter = instance_filter
 
+        # If we propagate AMI information to snapshots
+        self._noamis = noamis
+
         # If we process volumes
         self._novolumes = novolumes
 
@@ -69,7 +72,7 @@ class GraffitiMonkey(object):
         self._nosnapshots = nosnapshots
 
         log.info("Starting Graffiti Monkey")
-        log.info("Options: dryrun %s, append %s, novolumes %s, nosnapshots %s", self._dryrun, self._append, self._novolumes, self._nosnapshots)
+        log.info("Options: dryrun %s, append %s, noamis %s, novolumes %s, nosnapshots %s", self._dryrun, self._append, self._noamis, self._novolumes, self._nosnapshots)
         log.info("Connecting to region %s using profile %s", self._region, self._profile)
         try:
             session = boto3.Session(profile_name=profile)
@@ -89,6 +92,32 @@ class GraffitiMonkey(object):
         ''' Propagates tags by copying them from EC2 instance to EBS volume, and
         then to snapshot '''
 
+        amis = {}
+        if not self._noamis:
+            response = self._conn.describe_images(Owners=["self"])['Images']
+
+            for image in response:
+                for mapping in image['BlockDeviceMappings']:
+                    if 'Ebs' in mapping.keys():
+                        amis[mapping['Ebs']['SnapshotId']] = {
+                           'Tags': [
+                              {
+                                  'Key': 'AMI',
+                                  'Value': image['ImageId']
+                              },
+                              {
+                                  'Key': 'AMI Name',
+                                  'Value': image['Name']
+                              },
+                              {
+                                  'Key': 'AMI Description',
+                                  'Value': image['Description']
+                              }
+                           ]
+                        }
+
+            log.info("Compiled AMI information for tagging.")
+
         volumes = []
         if not self._novolumes:
             volumes = self.tag_volumes()
@@ -96,7 +125,7 @@ class GraffitiMonkey(object):
         volumes = { v["VolumeId"]: v for v in volumes }
 
         if not self._nosnapshots:
-            self.tag_snapshots(volumes)
+            self.tag_snapshots(volumes, amis)
 
     def tag_volumes(self):
         ''' Gets a list of volumes, and then loops through them tagging
@@ -267,7 +296,7 @@ class GraffitiMonkey(object):
         return True
 
 
-    def tag_snapshots(self, volumes):
+    def tag_snapshots(self, volumes, amis):
         ''' Gets a list of snapshots, and then loops through them tagging
         them '''
 
@@ -317,7 +346,7 @@ class GraffitiMonkey(object):
             log.info ('Processing snapshot %d of %d total snapshots', this_snap, total_snaps)
             for attempt in range(5):
                 try:
-                    self.tag_snapshot(snapshot, volumes)
+                    self.tag_snapshot(snapshot, volumes, amis)
                 except botocore.exceptions.ClientError as e:
                     log.error("Encountered Error %s on snapshot %s", e.error_code, snapshot.id)
                     break
@@ -331,7 +360,7 @@ class GraffitiMonkey(object):
                 continue
         log.info('Completed processing all snapshots')
 
-    def tag_snapshot(self, snapshot, volumes):
+    def tag_snapshot(self, snapshot, volumes, amis):
         ''' Tags a specific snapshot '''
 
         volume_id = snapshot["VolumeId"]
@@ -346,6 +375,16 @@ class GraffitiMonkey(object):
             tags_to_set = snapshot_tags.copy()
         else:
             tags_to_set = {}
+
+        # update tags_to_set with AMI information if present
+        ami_tags = {}
+        if snapshot["SnapshotId"] in amis:
+            ami_object = amis[snapshot["SnapshotId"]]
+
+            ami_tags = dict([(x['Key'], x['Value']) for x in ami_object.get('Tags', [])])
+
+            if len(ami_tags.keys()) > 0:
+                tags_to_set.update(ami_tags)
 
         tags_to_set.update(dict([(x['Key'], x['Value']) for x in volumes[volume_id].get('Tags', [])
                                  if x['Key'] in self._volume_tags_to_propagate]))
